@@ -1,0 +1,31 @@
+[package]
+version = "1.0.0"
+title = "My Company Template Extension"
+description = "A simple template extension for Isaac Sim 5.0.0"
+authors = ["Your Name"]
+repository = ""
+keywords = ["isaac", "template", "example"]
+category = "Example"
+readme = "docs/README.md"
+icon = "data/icon.png"
+
+# Kit version this extension targets
+[package.target]
+kit = ["107.3"]
+
+# Dependencies
+[dependencies]
+"omni.kit.uiapp" = {}
+"omni.ui" = {}
+"isaacsim.core.api" = {}
+
+# Main python module of this extension
+[[python.module]]
+name = "my.company.template"
+
+[settings]
+
+[[test]]
+dependencies = [
+    "omni.kit.test",
+]
