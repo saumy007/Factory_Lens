@@ -1,206 +1,210 @@
-# Technical Documentation — Factory VSM Overlay
+# Factory VSM Overlay — Isaac Sim Extension
 
-This document describes the internal architecture, data model, drawing pipeline, and extension points of the Factory VSM Overlay extension for NVIDIA Omniverse Isaac Sim 5.0.
+An NVIDIA Omniverse Isaac Sim extension that renders **floating, screen-style information cards above 3D objects** in a factory simulation. Each card displays Value Stream Mapping (VSM) metrics — Processing Time, Value Time, and Process Completion — and is fully editable from an in-app control panel: rename stations, edit metric values, and change header/text/background colors without touching code.
+
+Built for and tested on **Isaac Sim 5.0.0** (Kit 107.3.1).
 
 ---
 
-## 1. Architecture overview
+## Table of Contents
 
-The extension follows a clean separation between **data** (what to display) and **rendering** (how to display it):
+- [What It Does](#what-it-does)
+- [Why It Exists](#why-it-exists)
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Project Structure](#project-structure)
+- [Troubleshooting](#troubleshooting)
+- [Roadmap](#roadmap)
+- [License](#license)
+
+---
+
+## What It Does
+
+This extension draws a **heads-up information card hovering above each machine** (or any prim) in your Isaac Sim scene. Each card behaves like a small monitor floating over the equipment, showing the metrics that matter for a factory floor:
+
+- **Processing Time** — total time a unit spends at the station
+- **Value Time** — the portion of that time that adds value
+- **Process Completion** — completion percentage for the station
+
+The cards are **camera-aware**: the text always faces the viewer and stays anchored above its target object as you orbit, pan, and zoom the viewport.
+
+A companion **control panel window** lets you edit every card live — names, metric values, and colors — and refresh the overlay with a single click.
+
+---
+
+## Why It Exists
+
+Factory-floor simulations in Isaac Sim are excellent for visualizing equipment, robots, and human operators, but the simulator has **no built-in way to overlay process data onto the 3D scene**. Lean-manufacturing tools like Value Stream Mapping normally live in spreadsheets and static diagrams, disconnected from the actual layout.
+
+This extension closes that gap. It puts the **VSM data directly on the equipment in 3D space**, so a viewer can look at the factory and immediately see which station is the bottleneck, how long each process takes, and how much of that time is value-adding. It turns a visual simulation into a **decision-support tool** for process engineers, plant managers, and anyone analyzing flow and throughput.
+
+It is designed to be **generic** — the overlay anchors to any prim type (Mesh, Xform, Cone, conveyor, imported CAD machine), so it works on any scene, not just one specific factory.
+
+---
+
+## Features
+
+- **Floating info cards** anchored above any 3D object via world-space bounding-box placement
+- **Works on any prim type** — Mesh, Xform, and nested geometry are all supported
+- **Camera-tracked** — cards stay glued above their object and face the camera as you navigate
+- **Screen-style background** — a semi-transparent dark card with a border, evoking a small monitor
+- **Fully editable control panel** — rename stations, edit metrics, and pick colors at runtime
+- **Per-card color control** — independent header, text, and background colors
+- **Auto-sizing cards** — card height adapts to the number of metric lines
+- **Reusable** — point it at any set of prim paths to label any scene
+
+---
+
+## How It Works
+
+The extension combines three Omniverse subsystems:
+
+1. **Bounding-box placement.** For each target prim, it computes the world-space bounding box (`UsdGeom.BBoxCache`) and places the card just above the object's top center. Because this uses the rendered bounds rather than the prim's origin, cards sit correctly above objects regardless of how their pivot was authored or how the model was scaled.
+
+2. **Scene overlay rendering.** Cards are drawn with `omni.ui.scene` — text labels (`sc.Label`) and rectangles (`sc.Rectangle`) placed on transforms in 3D space. Labels are screen-facing by default, so they remain readable from any angle.
+
+3. **Per-frame camera synchronization.** An update-event subscription reads the active viewport's projection and view matrices every frame and feeds them into the scene view, keeping the 3D-anchored cards correctly projected onto the screen as the camera moves.
+
+The control panel is a standard `omni.ui.Window` whose fields write back into the extension's data model; clicking **Apply / Refresh Overlay** re-reads the fields and redraws the cards.
+
+---
+
+## Requirements
+
+- **NVIDIA Omniverse Isaac Sim 5.0.0** (Kit 107.3.1) — may work on nearby versions with minor API adjustments
+- A GPU and driver setup capable of running Isaac Sim's RTX renderer
+- A scene containing the prims you want to label
+
+---
+
+## Installation
+
+There are two common ways to add this extension to Isaac Sim.
+
+### Option A — Add the local folder as an extension search path (recommended)
+
+1. **Clone the repository** to a location on disk:
+
+   ```bash
+   git clone https://github.com/<your-username>/<your-repo>.git
+   ```
+
+   This gives you a folder such as `.../my.company.template/exts/my.company.template/`.
+
+2. **Launch Isaac Sim.**
+
+3. Open the **Extensions** window: `Window > Extensions`.
+
+4. Click the **gear / settings icon** in the Extensions window to open the extension search paths.
+
+5. **Add a new search path** pointing to the `exts` folder inside the cloned repo, for example:
+
+   ```
+   /home/<user>/<path>/my.company.template/exts
+   ```
+
+6. Back in the Extensions list, **search** for the extension by name (e.g. `my.company.template`).
+
+7. **Enable** it with the toggle. The control-panel window appears on startup.
+
+8. *(Optional)* Enable **Autoload** so the extension starts with Isaac Sim automatically.
+
+### Option B — Drop into an existing extensions directory
+
+Copy the `my.company.template` extension folder into a directory already on Isaac Sim's extension search path, then enable it from `Window > Extensions` as in steps 6–7 above.
+
+---
+
+## Usage
+
+1. **Open or build your factory scene** in Isaac Sim and note the **prim paths** of the objects you want to label (visible in the **Stage** panel).
+
+2. **Enable the extension** (see Installation). The **VSM Overlay Control** window opens.
+
+3. If the overlay does not appear immediately at startup (e.g., the viewport was not ready), click **Apply / Refresh Overlay** once the scene is loaded.
+
+4. **Edit any card** from the control panel:
+   - Change the **Name** field to rename a station.
+   - Edit the **metric** fields (Processing Time, Value Time, Completion).
+   - Use the **color pickers** to set header, text, and background colors.
+   - Adjust **Hover Height** to raise or lower all cards.
+
+5. Click **Apply / Refresh Overlay** to redraw with your changes.
+
+6. **Navigate the viewport** — cards stay anchored above their objects and face the camera.
+
+---
+
+## Configuration
+
+The set of labeled prims and their default values is defined in the extension's data model at startup (the `self._machines` dictionary in `extension.py`). Each entry maps a **prim path** to a configuration containing the display label, a dictionary of metrics, and three colors (header, text, background).
+
+To label **your own** objects, edit the prim paths in that dictionary to match the paths in your scene's Stage tree, or extend the control panel to add/remove entries at runtime.
+
+Colors are stored as packed **ABGR** integers (alpha, blue, green, red). The control panel's color pickers handle the conversion automatically, so you normally do not need to edit raw hex values.
+
+---
+
+## Project Structure
 
 ```
-┌─────────────────────────────────────────────┐
-│  Control Panel (omni.ui Window)             │
-│  - Editable name / metric / color widgets    │
-│  - "Apply / Refresh" button                   │
-└───────────────┬─────────────────────────────┘
-                │ reads widget values on Apply
-                ▼
-┌─────────────────────────────────────────────┐
-│  Machine config dict  (self._machines)       │
-│  path -> {label, metrics, colors}            │
-└───────────────┬─────────────────────────────┘
-                │ consumed by overlay builder
-                ▼
-┌─────────────────────────────────────────────┐
-│  Overlay builder (_rebuild_overlay)          │
-│  - bbox anchor per prim                       │
-│  - omni.ui.scene cards                         │
-└───────────────┬─────────────────────────────┘
-                │ projected each frame
-                ▼
-┌─────────────────────────────────────────────┐
-│  Camera sync (update event subscription)     │
-│  - feeds viewport proj/view into SceneView    │
-└─────────────────────────────────────────────┘
+my.company.template/
+└── exts/
+    └── my.company.template/
+        ├── config/
+        │   └── extension.toml          # extension manifest (name, version, module entry)
+        └── my/
+            └── company/
+                └── template/
+                    ├── __init__.py     # imports the extension class
+                    └── extension.py    # extension logic: control panel + overlay
 ```
 
-The extension lifecycle is governed by `omni.ext.IExt`:
-
-- `on_startup(ext_id)` — builds the control panel, then builds the initial overlay.
-- `on_shutdown()` — unsubscribes the camera-sync callback, clears the scene, destroys the window.
+> **Note on the extension class name:** the class defined in `extension.py` must match the name imported in `__init__.py`. If you rename the class, update the `from .extension import <ClassName>` line in `__init__.py` to match, or the extension will fail to load.
 
 ---
 
-## 2. Data model
+## Troubleshooting
 
-Each annotated machine is one entry in `self._machines`, keyed by USD prim path:
+**Extension fails to load with `cannot import name ... from ... extension`**
+The class name in `extension.py` does not match the name imported in `__init__.py`. Make the two identical, save, then disable and re-enable the extension.
 
-```python
-"/scene/scene_01": {
-    "label": "SMT Pick & Place",      # header text (editable)
-    "metrics": {                       # ordered VSM readouts (editable)
-        "Processing Time": "45s",
-        "Value Time": "30s",
-        "Completion": "92%",
-    },
-    "header_color": 0xFF00FFFF,        # ABGR packed int
-    "text_color":   0xFFFFFFFF,
-    "bg_color":     0xCC202020,        # alpha < FF => semi-transparent screen
-}
-```
+**Control panel opens but no cards appear in the viewport**
+Click **Apply / Refresh Overlay** after the scene has fully loaded. If still nothing shows, confirm the prim paths in the configuration match paths that exist in your Stage tree.
 
-**Color encoding.** `omni.ui.scene` expects colors as 32-bit **ABGR** integers (`0xAABBGGRR`), *not* RGBA. The high byte is alpha. Helper conversions live in `_build_color_picker()` (unpack ABGR → RGBA floats for the picker) and `_color_widget_to_abgr()` (pack RGBA floats → ABGR int on read-back).
+**Cards appear in the wrong place (beside or inside objects)**
+This is usually an up-axis or scale issue. The placement assumes a Y-up scene. Verify your scene's up-axis and adjust the hover height; for very large or very small scenes, tune the card dimensions.
+
+**Cards do not track the camera (stay fixed on screen)**
+The per-frame camera synchronization did not bind to the active viewport. Make sure a viewport is open and focused, then refresh the overlay.
+
+**A prim is found but no card appears for it**
+The prim may have an empty bounding box (no directly renderable geometry on that prim). Point the overlay at a child prim that has geometry, or at a prim whose bounds enclose the object.
 
 ---
 
-## 3. Anchoring: placing a card above any prim
+## Roadmap
 
-Placement uses the prim's **world-space bounding box**, which makes it agnostic to prim type, scale, and pivot:
+Planned enhancements:
 
-```python
-bbox_cache = UsdGeom.BBoxCache(0, [UsdGeom.Tokens.default_, UsdGeom.Tokens.render])
-rng = bbox_cache.ComputeWorldBound(prim).ComputeAlignedRange()
-mn, mx = rng.GetMin(), rng.GetMax()
-anchor = Gf.Vec3d((mn[0]+mx[0])/2.0,    # X center
-                  mx[1] + margin,        # top in Y (scene is Y-up) + margin
-                  (mn[2]+mx[2])/2.0)     # Z center
-```
-
-Key points:
-
-- `ComputeWorldBound` works on `Mesh`, `Xform`, and other `UsdGeomImageable` prims, so the same code annotates a machine group or a single cone.
-- The scene is **Y-up**; the card is lifted along **+Y**. For a Z-up scene, lift along `mx[2]` instead.
-- `rng.IsEmpty()` is checked; prims with no renderable geometry fall back to their xform translation (or are skipped, depending on build).
+- **Live metrics** — drive Processing Time and completion from the running simulation rather than static values, so cards update in real time.
+- **Bottleneck highlighting** — automatically color the slowest station to flag it as the constraint.
+- **Add/remove cards from the UI** — manage the labeled prim set entirely from the control panel.
+- **Persistence** — save and load card configurations with the scene.
 
 ---
 
-## 4. Drawing the card
+## License
 
-Cards are drawn with the `omni.ui.scene` (`sc`) immediate-mode API inside the active viewport's overlay frame:
-
-```python
-with viewport_window.get_frame("vsm_overlay"):
-    self._scene_view = sc.SceneView()
-    with self._scene_view.scene:
-        with sc.Transform(transform=sc.Matrix44.get_translation_matrix(*anchor)):
-            sc.Rectangle(card_w, card_h, color=bg_color)        # screen background
-            sc.Rectangle(card_w, card_h, color=0xFF000000,      # border
-                         wireframe=True, thickness=2)
-            sc.Label(label, alignment=ui.Alignment.CENTER,
-                     color=header_color, size=22)               # header
-            # ... metric lines stacked downward via nested Transforms
-```
-
-Notes:
-
-- **Screen-aligned labels.** `sc.Label` faces the camera by default, so text stays readable from any orbit angle while the anchor stays fixed in world space.
-- **Card sizing.** `card_h` scales with the number of metric lines: `card_h = 0.6 + n_lines * 0.35` (world units). `card_w` is fixed (default `3.0`) and can be tuned per scene scale.
-- **Layering.** The background rectangle is offset slightly behind the text along the local axis to avoid z-fighting with labels.
+Specify your chosen license here (for example, MIT or Apache 2.0). Add a `LICENSE` file to the repository root.
 
 ---
 
-## 5. Camera synchronization
+## Acknowledgements
 
-`get_frame()` alone does **not** bind the `SceneView` projection to the viewport camera on Isaac Sim 5.0; without an explicit sync the cards render into an unprojected space and are invisible. The fix is a per-frame update subscription:
-
-```python
-viewport_api = get_active_viewport()
-
-def _on_update(e):
-    proj = viewport_api.projection                 # 4x4 projection
-    view = viewport_api.transform.GetInverse()     # world-to-camera
-    self._scene_view.projection = [v for row in proj for v in row]
-    self._scene_view.view       = [v for row in view for v in row]
-
-self._update_sub = omni.kit.app.get_app() \
-    .get_update_event_stream() \
-    .create_subscription_to_pop(_on_update, name="vsm_camera_sync")
-```
-
-`viewport_api.transform` is the camera-to-world matrix; its inverse is the view matrix the `SceneView` needs. Both matrices are flattened row-major to 16-float lists. The subscription is stored so it can be cleanly unsubscribed in `on_shutdown` and on each rebuild (preventing duplicate callbacks).
-
----
-
-## 6. Edit → apply cycle
-
-1. The control panel builds one collapsible section per machine, each holding a `StringField` for the name, `StringField`s for metrics, and `ColorWidget`s for colors.
-2. On **Apply**, `_on_apply()` iterates `self._field_widgets`, reading each widget's model value back into `self._machines`.
-3. `_rebuild_overlay()` clears the previous `SceneView` scene and redraws from the updated config.
-4. `_setup_camera_sync()` re-establishes the per-frame projection feed.
-
-Reading a `ColorWidget` back requires walking its child item models:
-
-```python
-model = color_widget.model
-children = model.get_item_children()
-r = model.get_item_value_model(children[0]).get_value_as_float()
-g = model.get_item_value_model(children[1]).get_value_as_float()
-b = model.get_item_value_model(children[2]).get_value_as_float()
-a = model.get_item_value_model(children[3]).get_value_as_float() if len(children) > 3 else 1.0
-```
-
----
-
-## 7. Extension manifest (`extension.toml`)
-
-The manifest must declare the Python module and any Kit dependencies. Minimum relevant fields:
-
-```toml
-[package]
-version = "1.0.0"
-title = "Factory VSM Overlay"
-description = "Hovering, editable VSM metric cards above factory machines."
-category = "Simulation"
-
-[dependencies]
-"omni.ui" = {}
-"omni.usd" = {}
-"omni.kit.viewport.utility" = {}
-
-[[python.module]]
-name = "my.company.template"
-```
-
-The `name` under `[[python.module]]` must match the package directory, and the class imported in `__init__.py` must match the class defined in `extension.py`.
-
----
-
-## 8. Common issues
-
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| `ImportError: cannot import name 'X'` | Class name in `extension.py` does not match the name imported in `__init__.py` | Make both identical; save; toggle the extension off/on |
-| Labels drawn (log confirms) but invisible | Camera sync not bound | Ensure the update subscription feeds `projection`/`view` each frame |
-| Card appears beside, not above, the machine | Wrong up-axis | Lift along the scene's up-axis (Y vs. Z) |
-| Card too large/small | World-unit sizing vs. scene scale | Tune `card_w`, `card_h`, and `Hover Height` |
-| `BBOX IS EMPTY` warning | Prim has no renderable geometry directly | Target a child mesh, or rely on the xform-translation fallback |
-| `'SceneView' has no attribute 'projection'` | Kit build API variance | Use the viewport scene-registry binding instead of bare `SceneView` |
-
----
-
-## 9. Extending to live data
-
-The metric strings are static today but the design anticipates live values. To drive them from simulation:
-
-1. Replace the literal metric strings with values pulled from your station logic each tick (e.g., a counter incremented in a physics/update callback).
-2. Call a lightweight "update labels" routine on a timer rather than a full `_rebuild_overlay()` — update only the `sc.Label` text where the API allows, or throttle full rebuilds to a few times per second.
-3. Add bottleneck logic: compare per-station processing times and set `header_color` to a warning color for the slowest station before drawing.
-
----
-
-## 10. References
-
-- NVIDIA Omniverse Isaac Sim Documentation — https://docs.isaacsim.omniverse.nvidia.com/
-- `omni.ui.scene` API — Kit SDK documentation
-- USD `UsdGeom.BBoxCache` — https://openusd.org/release/api/class_usd_geom_b_box_cache.html
+Built on NVIDIA Omniverse Isaac Sim and the `omni.ui` / `omni.ui.scene` UI framework.
