@@ -91,7 +91,7 @@ There are two common ways to add this extension to Isaac Sim.
 1. **Clone the repository** to a location on disk:
 
    ```bash
-   git clone https://github.com/<your-username>/<your-repo>.git
+  https://github.com/saumy007/Factory_Lens
    ```
 
    This gives you a folder such as `.../my.company.template/exts/my.company.template/`.
